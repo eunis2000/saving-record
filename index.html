@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>定存計算與提醒小幫手 💰</title>
+    <!-- 引入 Tailwind CSS (樣式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Vue 3 (邏輯) -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen p-4 md:p-8">
+
+    <div id="app" class="max-w-3xl mx-auto">
+        
+        <!-- 標題區 -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-indigo-600 mb-2">定存計算與提醒小幫手 🏦</h1>
+            <p class="text-gray-500">計算利息、保存記錄，並一鍵加入 Google 日曆</p>
+        </header>
+
+        <!-- 輸入區塊 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-100">
+            <h2 class="text-xl font-bold mb-4 text-gray-700 flex items-center">
+                <span>📝 新增定存</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">存款金額 (元)</label>
+                    <input type="number" v-model.number="form.amount" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="例如: 100000">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">年利率 (%)</label>
+                    <input type="number" step="0.01" v-model.number="form.rate" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="例如: 1.7">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">起存日期</label>
+                    <input type="date" v-model="form.startDate" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">存款期間 (月)</label>
+                    <select v-model.number="form.months" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="3">3 個月</option>
+                        <option value="6">6 個月</option>
+                        <option value="12">1 年 (12個月)</option>
+                        <option value="24">2 年 (24個月)</option>
+                        <option value="36">3 年 (36個月)</option>
+                    </select>
+                </div>
+            </div>
+            <button @click="addDeposit" class="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition duration-200 shadow-md">
+                計算並儲存
+            </button>
+        </div>
+
+        <!-- 記錄列表區塊 -->
+        <div v-if="deposits.length > 0" class="space-y-4">
+            <h2 class="text-xl font-bold text-gray-700 mb-2">📊 存款記錄</h2>
+            
+            <div v-for="(item, index) in deposits" :key="index" class="bg-white rounded-xl shadow p-5 border-l-4 border-indigo-500 relative group">
+                <button @click="removeDeposit(index)" class="absolute top-3 right-3 text-gray-300 hover:text-red-500 transition">✕</button>
+                
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <div class="text-2xl font-bold text-gray-800">NT$ {{ formatNumber(item.amount) }}</div>
+                        <div class="text-sm text-gray-500 mt-1">
+                            利率: <span class="font-medium text-indigo-600">{{ item.rate }}%</span> | 
+                            期間: {{ item.months }} 個月
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">
+                            起存: {{ item.startDate }} ➝ 到期: <span class="text-indigo-600 font-bold">{{ item.endDate }}</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 p-3 rounded-lg text-right min-w-[140px]">
+                        <div class="text-xs text-gray-500">預估利息</div>
+                        <div class="text-lg font-bold text-green-600">+{{ formatNumber(item.interest) }}</div>
+                        <div class="text-xs text-gray-500 mt-1">本利和</div>
+                        <div class="font-medium text-gray-700">{{ formatNumber(item.total) }}</div>
+                    </div>
+                </div>
+
+                <!-- Google Calendar 按鈕 -->
+                <div class="mt-4 pt-3 border-t border-gray-100">
+                    <a :href="getCalendarUrl(item)" target="_blank" class="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium transition">
+                        📅 加入 Google 日曆提醒
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div v-else class="text-center py-12 text-gray-400">
+            <p>目前沒有存款記錄，試著新增一筆吧！</p>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, watch } = Vue;
+
+        createApp({
+            setup() {
+                // 表單預設值
+                const form = ref({
+                    amount: 100000,
+                    rate: 1.6,
+                    startDate: new Date().toISOString().split('T')[0],
+                    months: 12
+                });
+
+                const deposits = ref([]);
+
+                // 初始化：從 LocalStorage 讀取資料
+                onMounted(() => {
+                    const saved = localStorage.getItem('myBankDeposits');
+                    if (saved) {
+                        deposits.value = JSON.parse(saved);
+                    }
+                });
+
+                // 監聽資料變動並存檔
+                watch(deposits, (newVal) => {
+                    localStorage.setItem('myBankDeposits', JSON.stringify(newVal));
+                }, { deep: true });
+
+                // 計算到期日
+                const calculateEndDate = (start, months) => {
+                    const date = new Date(start);
+                    date.setMonth(date.getMonth() + months);
+                    return date.toISOString().split('T')[0];
+                };
+
+                // 新增存款邏輯
+                const addDeposit = () => {
+                    if (!form.value.amount || !form.value.rate || !form.value.startDate) {
+                        alert('請填寫完整資訊');
+                        return;
+                    }
+
+                    const interest = Math.round(form.value.amount * (form.value.rate / 100) * (form.value.months / 12));
+                    const endDate = calculateEndDate(form.value.startDate, form.value.months);
+
+                    deposits.value.unshift({
+                        amount: form.value.amount,
+                        rate: form.value.rate,
+                        months: form.value.months,
+                        startDate: form.value.startDate,
+                        endDate: endDate,
+                        interest: interest,
+                        total: form.value.amount + interest,
+                        id: Date.now() // 唯一識別碼
+                    });
+                };
+
+                const removeDeposit = (index) => {
+                    if(confirm('確定要刪除這筆記錄嗎？')) {
+                        deposits.value.splice(index, 1);
+                    }
+                };
+
+                // 數字格式化 (加逗號)
+                const formatNumber = (num) => {
+                    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                };
+
+                // 生成 Google Calendar 連結
+                const getCalendarUrl = (item) => {
+                    // 格式化日期為 YYYYMMDD
+                    const start = item.endDate.replace(/-/g, '');
+                    // 結束時間設為當天+1天 (全天事件)
+                    const nextDay = new Date(item.endDate);
+                    nextDay.setDate(nextDay.getDate() + 1);
+                    const end = nextDay.toISOString().split('T')[0].replace(/-/g, '');
+
+                    const title = encodeURIComponent(`💰 定存到期：本金 ${formatNumber(item.amount)}`);
+                    const details = encodeURIComponent(`本金：${formatNumber(item.amount)}\n利息：${formatNumber(item.interest)}\n本利和：${formatNumber(item.total)}\n利率：${item.rate}%`);
+                    
+                    return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}`;
+                };
+
+                return {
+                    form,
+                    deposits,
+                    addDeposit,
+                    removeDeposit,
+                    formatNumber,
+                    getCalendarUrl
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
